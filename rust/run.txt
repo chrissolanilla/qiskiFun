@@ -1,0 +1,1 @@
+default: cargo run -- ../benchmark_circuits/Deutsch-Jozsa/qasm/Deutsch-Jozsa_5qubits_circuit1.qasm --diagram --all --hardware custom5
