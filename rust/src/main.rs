@@ -30,6 +30,45 @@ struct Hardware {
     num_qubits: usize,
     edges: Vec<(usize, usize)>,
 }
+//hardware constructors
+fn line_hardware(n: usize) -> Hardware {
+    let mut edges = Vec::new();
+    for i in 0..n.saturating_sub(1) {
+        edges.push((i, i + 1));
+    }
+    Hardware { num_qubits: n, edges }
+}
+
+fn star_hardware(n: usize, center: usize) -> Hardware {
+    let mut edges = Vec::new();
+    for q in 0..n {
+        if q != center {
+            edges.push((center, q));
+        }
+    }
+    Hardware { num_qubits: n, edges }
+}
+
+fn custom_five_qubit_hardware() -> Hardware {
+    Hardware {
+        num_qubits: 5,
+        edges: vec![
+            (0, 1),
+            (0, 2),
+            (0, 3),
+            (2, 4),
+        ],
+    }
+}
+
+fn get_flag_value(args: &[String], flag: &str) -> Option<String> {
+    for i in 0..args.len() {
+        if args[i] == flag {
+            return args.get(i + 1).cloned();
+        }
+    }
+    None
+}
 
 #[derive(Clone, Debug)]
 struct SearchState {
@@ -155,6 +194,18 @@ fn parse_qasm_file(path: &Path) -> Result<Circuit, String> {
             continue;
         }
 
+        if line.starts_with("U(pi/2, 0, pi)") {
+            let q = parse_index(line).ok_or("bad U(pi/2, 0, pi) gate")?;
+            gates.push(Gate::H(q));
+            continue;
+        }
+
+        if line.starts_with("U(pi, 0, pi)") {
+            let q = parse_index(line).ok_or("bad U(pi, 0, pi) gate")?;
+            gates.push(Gate::X(q));
+            continue;
+        }
+
         return Err(format!("unsupported line: {line}"));
     }
 
@@ -165,13 +216,6 @@ fn parse_qasm_file(path: &Path) -> Result<Circuit, String> {
     Ok(Circuit { num_qubits, gates })
 }
 
-fn line_hardware(n: usize) -> Hardware {
-    let mut edges = Vec::new();
-    for i in 0..n.saturating_sub(1) {
-        edges.push((i, i + 1));
-    }
-    Hardware { num_qubits: n, edges }
-}
 
 fn has_edge(hw: &Hardware, a: usize, b: usize) -> bool {
     hw.edges
@@ -582,6 +626,14 @@ fn print_wrapped_columns(
     }
 }
 
+fn print_hardware(hw: &Hardware) {
+    println!("hardware qubits: {}", hw.num_qubits);
+    println!("hardware edges:");
+    for (a, b) in &hw.edges {
+        println!("  {} -- {}", a, b);
+    }
+}
+
 fn main() {
 
     let args: Vec<String> = env::args().collect();
@@ -591,6 +643,7 @@ fn main() {
         eprintln!("usage: cargo run -- <file.qasm> [--all] [--all-valid] [--diagram]");
         std::process::exit(1);
     }
+
 
     let show_all = args.contains(&"--all".to_string());
     let show_all_valid = args.contains(&"--all-valid".to_string());
@@ -615,8 +668,23 @@ fn main() {
     println!("  num_qubits = {}", circuit.num_qubits);
     println!("  num_gates  = {}", circuit.gates.len());
 
-    let hw = line_hardware(circuit.num_qubits);
+    // let hw = line_hardware(circuit.num_qubits);
+
+    let hardware_name = get_flag_value(&args, "--hardware")
+                            .unwrap_or_else(|| "line".to_string());
+
+    let hw = match hardware_name.as_str() {
+        "line" => line_hardware(circuit.num_qubits),
+        "star" => star_hardware(circuit.num_qubits, 0),
+        "custom5" => custom_five_qubit_hardware(),
+        _ => {
+            eprintln!("unknown hardware: {}", hardware_name);
+            eprintln!("available hardware: line, star, custom5");
+            std::process::exit(1);
+        }
+    };
     println!("target hardware: {}-qubit line", hw.num_qubits);
+    print_hardware(&hw);
     println!("edges: {:?}", hw.edges);
 
     let original_cnot_count = circuit
@@ -640,7 +708,7 @@ fn main() {
 
     // let solutions = find_solutions(&circuit, &hw, max_cnot_cost, max_expansions);
     let prune_by_best_cost = !show_all_valid;
-    let max_steps = 32;
+    let max_steps = 1_000_000;
     let solutions = find_solutions(
         &circuit,
         &hw,
