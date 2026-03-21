@@ -48,6 +48,48 @@ struct Solution {
     swap_count: usize,
 }
 
+fn gate_row(qubit: usize) -> usize {
+    qubit * 2
+}
+
+fn connector_row_between(a: usize, b: usize) -> std::ops::RangeInclusive<usize> {
+    let low = a.min(b);
+    let high = a.max(b);
+    (gate_row(low) + 1)..=(gate_row(high) - 1)
+}
+
+fn blank_column(num_qubits: usize, cell_width: usize) -> Vec<String> {
+    let total_rows = num_qubits * 2 - 1;
+    vec!["-".repeat(cell_width); total_rows]
+}
+
+fn centered_cell(cell_width: usize, label: &str, fill: char) -> String {
+    let label_width = label.chars().count();
+    let left = (cell_width.saturating_sub(label_width)) / 2;
+    let right = cell_width.saturating_sub(label_width + left);
+
+    let mut s = String::new();
+    s.push_str(&fill.to_string().repeat(left));
+    s.push_str(label);
+    s.push_str(&fill.to_string().repeat(right));
+    s
+}
+
+fn vertical_cell(cell_width: usize) -> String {
+    let mid = cell_width / 2;
+    let mut s = String::new();
+
+    for i in 0..cell_width {
+        if i == mid {
+            s.push('|');
+        } else {
+            s.push(' ');
+        }
+    }
+
+    s
+}
+
 fn parse_index(token: &str) -> Option<usize> {
     let start = token.find('[')?;
     let end = token.find(']')?;
@@ -85,7 +127,7 @@ fn parse_qasm_file(path: &Path) -> Result<Circuit, String> {
         }
 
         if line.contains("measure") {
-            // ignore measurements for unitary equivalence
+            //not need for unitary equivalence
             continue;
         }
 
@@ -201,7 +243,7 @@ fn next_states(state: &SearchState, circuit: &Circuit, hw: &Hardware) -> Vec<Sea
                     out.push(next);
                 }
 
-                // if not executable, try all hardware swaps
+                //try hardware swaps if not execuatble
                 for &(a, b) in &hw.edges {
                     let new_mapping = apply_swap_to_mapping(&state.mapping, a, b);
 
@@ -209,13 +251,14 @@ fn next_states(state: &SearchState, circuit: &Circuit, hw: &Hardware) -> Vec<Sea
                     next.mapping = new_mapping;
                     next.emitted.push(PhysicalGate::SWAP(a, b));
                     next.swap_count += 1;
-                    next.cnot_cost += 3; // standard swap decomposition cost in CX basis
+                    //standard swap decomposition cost in CX basis
+                    next.cnot_cost += 3;
                     out.push(next);
                 }
             }
         }
     } else {
-        // logical circuit done; allow swaps to restore identity mapping
+        //logical circuit done, now restore identiy map
         if !mapping_is_identity(&state.mapping) {
             for &(a, b) in &hw.edges {
                 let new_mapping = apply_swap_to_mapping(&state.mapping, a, b);
@@ -237,6 +280,8 @@ fn find_solutions(
     hw: &Hardware,
     max_cnot_cost: usize,
     max_expansions: usize,
+    prune_by_best_cost: bool,
+    max_steps: usize,
 ) -> Vec<Solution> {
     let start = SearchState {
         mapping: identity_mapping(circuit.num_qubits),
@@ -259,7 +304,11 @@ fn find_solutions(
         if expansions >= max_expansions {
             break;
         }
+
         expansions += 1;
+        if state.emitted.len() > max_steps {
+            continue;
+        }
 
         if state.cnot_cost > max_cnot_cost {
             continue;
@@ -279,14 +328,18 @@ fn find_solutions(
                 continue;
             }
 
-            let key = state_key(next.gate_index, &next.mapping);
-            let should_push = match best_seen.get(&key) {
-                Some(&old_cost) => next.cnot_cost <= old_cost,
-                None => true,
-            };
+            if prune_by_best_cost {
+                let key = state_key(next.gate_index, &next.mapping);
+                let should_push = match best_seen.get(&key) {
+                    Some(&old_cost) => next.cnot_cost <= old_cost,
+                    None => true,
+                };
 
-            if should_push {
-                best_seen.insert(key, next.cnot_cost);
+                if should_push {
+                    best_seen.insert(key, next.cnot_cost);
+                    queue.push_back(next);
+                }
+            } else {
                 queue.push_back(next);
             }
         }
@@ -418,16 +471,133 @@ fn print_physical_circuit(sol: &Solution) {
     }
 }
 
+fn print_logical_circuit(circuit: &Circuit) {
+    println!("\n=== logical circuit ===");
+
+    for (i, gate) in circuit.gates.iter().enumerate() {
+        match gate {
+            Gate::H(q) => println!("{i:>3}: h q[{q}]"),
+            Gate::X(q) => println!("{i:>3}: x q[{q}]"),
+            Gate::CX(c, t) => println!("{i:>3}: cx q[{c}], q[{t}]"),
+        }
+    }
+}
+
+fn draw_logical_circuit_wrapped(circuit: &Circuit, max_cols: usize) {
+    let num_qubits = circuit.num_qubits;
+    let cell_width = 7;
+    let mut columns: Vec<Vec<String>> = Vec::new();
+
+    for gate in &circuit.gates {
+        let mut col = blank_column(num_qubits, cell_width);
+
+        match gate {
+            Gate::H(q) => {
+                col[gate_row(*q)] = centered_cell(cell_width, "H", '-');
+            }
+            Gate::X(q) => {
+                col[gate_row(*q)] = centered_cell(cell_width, "X", '-');
+            }
+            Gate::CX(c, t) => {
+                col[gate_row(*c)] = centered_cell(cell_width, "o", '-');
+                col[gate_row(*t)] = centered_cell(cell_width, "CX", '-');
+
+                for r in connector_row_between(*c, *t) {
+                    col[r] = vertical_cell(cell_width);
+                }
+            }
+        }
+
+        columns.push(col);
+    }
+
+    print_wrapped_columns(num_qubits, &columns, max_cols, "q");
+}
+
+fn draw_physical_circuit_wrapped(num_qubits: usize, gates: &[PhysicalGate], max_cols: usize) {
+    let cell_width = 7;
+    let mut columns: Vec<Vec<String>> = Vec::new();
+
+    for gate in gates {
+        let mut col = blank_column(num_qubits, cell_width);
+
+        match gate {
+            PhysicalGate::H(q) => {
+                col[gate_row(*q)] = centered_cell(cell_width, "H", '-');
+            }
+            PhysicalGate::X(q) => {
+                col[gate_row(*q)] = centered_cell(cell_width, "X", '-');
+            }
+            PhysicalGate::CX(c, t) => {
+                col[gate_row(*c)] = centered_cell(cell_width, "o", '-');
+                col[gate_row(*t)] = centered_cell(cell_width, "CX", '-');
+
+                for r in connector_row_between(*c, *t) {
+                    col[r] = vertical_cell(cell_width);
+                }
+            }
+            PhysicalGate::SWAP(a, b) => {
+                col[gate_row(*a)] = centered_cell(cell_width, "SW", '-');
+                col[gate_row(*b)] = centered_cell(cell_width, "SW", '-');
+
+                for r in connector_row_between(*a, *b) {
+                    col[r] = vertical_cell(cell_width);
+                }
+            }
+        }
+
+        columns.push(col);
+    }
+
+    print_wrapped_columns(num_qubits, &columns, max_cols, "p");
+}
+
+fn print_wrapped_columns(
+    num_qubits: usize,
+    columns: &[Vec<String>],
+    max_cols: usize,
+    prefix: &str,
+) {
+    let total_rows = num_qubits * 2 - 1;
+    let chunk_size = max_cols.max(1);
+
+    for (chunk_idx, chunk) in columns.chunks(chunk_size).enumerate() {
+        if chunk_idx > 0 {
+            println!();
+        }
+
+        for row in 0..total_rows {
+            if row % 2 == 0 {
+                let q = row / 2;
+                print!("{prefix}{q}: ");
+            } else {
+                print!("    ");
+            }
+
+            for col in chunk {
+                print!("{}", col[row]);
+            }
+            println!();
+        }
+    }
+}
+
 fn main() {
+
     let args: Vec<String> = env::args().collect();
 
     if args.len() < 2 {
-        eprintln!("usage: cargo run -- circuits/threeQubit.qasm");
+        // eprintln!("usage: cargo run -- <file.qasm> [--all] [--diagram]");
+        eprintln!("usage: cargo run -- <file.qasm> [--all] [--all-valid] [--diagram]");
         std::process::exit(1);
     }
 
+    let show_all = args.contains(&"--all".to_string());
+    let show_all_valid = args.contains(&"--all-valid".to_string());
+    let show_diagram = args.contains(&"--diagram".to_string());
 
     let qasm_path = Path::new(&args[1]);
+
     if qasm_path.extension().and_then(|s| s.to_str()) != Some("qasm") {
         eprintln!("error: expected a .qasm file");
         std::process::exit(1);
@@ -456,10 +626,29 @@ fn main() {
         .count();
     println!("logical cx count = {original_cnot_count}");
 
+    print_logical_circuit(&circuit);
+
+    if show_diagram {
+        println!("===original circuit===");
+        println!("\nlegend: o = cnot control, CX = cnot target, SW = swap, X = pauli-x");
+        // draw_logical_circuit(&circuit);
+        draw_logical_circuit_wrapped(&circuit, 12);
+    }
+
     let max_cnot_cost = 20;
     let max_expansions = 100_000;
 
-    let solutions = find_solutions(&circuit, &hw, max_cnot_cost, max_expansions);
+    // let solutions = find_solutions(&circuit, &hw, max_cnot_cost, max_expansions);
+    let prune_by_best_cost = !show_all_valid;
+    let max_steps = 32;
+    let solutions = find_solutions(
+        &circuit,
+        &hw,
+        max_cnot_cost,
+        max_expansions,
+        prune_by_best_cost,
+        max_steps,
+    );
 
     if solutions.is_empty() {
         println!("no solutions found within limits");
@@ -468,23 +657,27 @@ fn main() {
 
     let logical_state = simulate_logical(&circuit);
 
-    println!("\nfound {} candidate compiled circuits\n", solutions.len());
 
-    for (idx, sol) in solutions.iter().take(10).enumerate() {
+    let to_show = if show_all {
+        solutions.len()
+    } else {
+        1
+    };
+
+    for (idx, sol) in solutions.iter().take(to_show).enumerate() {
         let compiled_state = simulate_physical(circuit.num_qubits, &sol.emitted);
         let eq = states_close(&logical_state, &compiled_state, 1e-9);
 
-        println!("solution #{idx}");
-        println!("  cnot_cost = {}", sol.cnot_cost);
-        println!("  swap_count = {}", sol.swap_count);
-        println!("  equivalent = {}", eq);
-        print_physical_circuit(sol);
-        println!();
-    }
+        println!("\n=== solution #{idx} ===");
+        println!("cnot_cost = {}", sol.cnot_cost);
+        println!("swap_count = {}", sol.swap_count);
+        println!("equivalent = {}", eq);
 
-    if let Some(best) = solutions.first() {
-        println!("best solution summary:");
-        println!("  cnot_cost = {}", best.cnot_cost);
-        println!("  swap_count = {}", best.swap_count);
+        if show_diagram {
+            // draw_physical_circuit(circuit.num_qubits, &sol.emitted);
+            draw_physical_circuit_wrapped(circuit.num_qubits, &sol.emitted, 12);
+        } else {
+            print_physical_circuit(sol);
+        }
     }
 }
