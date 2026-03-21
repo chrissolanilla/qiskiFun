@@ -1,0 +1,19 @@
+# rust
+target/
+Cargo.lock
+
+# mac
+.DS_Store
+
+# python
+venv/
+.venv/
+__pycache__/
+*.pyc
+
+# generated circuits
+*.qpy
+*.qasm
+
+# misc
+*.log

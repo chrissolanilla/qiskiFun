@@ -10,4 +10,3 @@ src/sabre/experiments.py
 src/sabre/io_utils.py
 src/sabre/metrics.py
 src/sabre/targets.py
-src/scripts/run.py
