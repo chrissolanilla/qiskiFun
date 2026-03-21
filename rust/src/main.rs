@@ -504,6 +504,107 @@ fn states_close(a: &[Complex64], b: &[Complex64], eps: f64) -> bool {
         .all(|(x, y)| (*x - *y).norm() <= eps)
 }
 
+fn basis_state(n: usize, index: usize) -> Vec<Complex64> {
+    let dim = 1usize << n;
+    let mut v = vec![Complex64::new(0.0, 0.0); dim];
+    v[index] = Complex64::new(1.0, 0.0);
+    v
+}
+
+fn simulate_logical_from_state(circuit: &Circuit, input: &[Complex64]) -> Vec<Complex64> {
+    let mut state = input.to_vec();
+
+    for gate in &circuit.gates {
+        match *gate {
+            Gate::H(q) => apply_h(&mut state, q, circuit.num_qubits),
+            Gate::X(q) => apply_x(&mut state, q, circuit.num_qubits),
+            Gate::CX(c, t) => apply_cx(&mut state, c, t, circuit.num_qubits),
+        }
+    }
+
+    state
+}
+
+fn simulate_physical_from_state(
+    num_qubits: usize,
+    gates: &[PhysicalGate],
+    input: &[Complex64],
+) -> Vec<Complex64> {
+    let mut state = input.to_vec();
+
+    for gate in gates {
+        match *gate {
+            PhysicalGate::H(q) => apply_h(&mut state, q, num_qubits),
+            PhysicalGate::X(q) => apply_x(&mut state, q, num_qubits),
+            PhysicalGate::CX(c, t) => apply_cx(&mut state, c, t, num_qubits),
+            PhysicalGate::SWAP(a, b) => apply_swap(&mut state, a, b, num_qubits),
+        }
+    }
+
+    state
+}
+
+fn states_close_with_fixed_phase(
+    a: &[Complex64],
+    b: &[Complex64],
+    phase: Complex64,
+    eps: f64,
+) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+
+    a.iter()
+        .zip(b.iter())
+        .all(|(x, y)| (*x - phase * *y).norm() <= eps)
+}
+
+fn find_relative_phase(a: &[Complex64], b: &[Complex64], eps: f64) -> Option<Complex64> {
+    for (x, y) in a.iter().zip(b.iter()) {
+        if x.norm() > eps && y.norm() > eps {
+            return Some(*x / *y);
+        }
+    }
+    None
+}
+
+fn circuits_equivalent_on_all_basis_states(
+    circuit: &Circuit,
+    emitted: &[PhysicalGate],
+    eps: f64,
+) -> bool {
+    let n = circuit.num_qubits;
+    let dim = 1usize << n;
+
+    let mut global_phase: Option<Complex64> = None;
+
+    for basis_index in 0..dim {
+        let input = basis_state(n, basis_index);
+
+        let logical_out = simulate_logical_from_state(circuit, &input);
+        let physical_out = simulate_physical_from_state(n, emitted, &input);
+
+        match global_phase {
+            None => {
+                let phase = find_relative_phase(&logical_out, &physical_out, eps)
+                    .unwrap_or(Complex64::new(1.0, 0.0));
+                global_phase = Some(phase);
+
+                if !states_close_with_fixed_phase(&logical_out, &physical_out, phase, eps) {
+                    return false;
+                }
+            }
+            Some(phase) => {
+                if !states_close_with_fixed_phase(&logical_out, &physical_out, phase, eps) {
+                    return false;
+                }
+            }
+        }
+    }
+
+    true
+}
+
 fn print_physical_circuit(sol: &Solution) {
     for (i, gate) in sol.emitted.iter().enumerate() {
         match gate {
@@ -683,7 +784,8 @@ fn main() {
             std::process::exit(1);
         }
     };
-    println!("target hardware: {}-qubit line", hw.num_qubits);
+    // println!("target hardware: {}-qubit line", hw.num_qubits);
+    println!("target hardware: {}", hardware_name);
     print_hardware(&hw);
     println!("edges: {:?}", hw.edges);
 
@@ -703,7 +805,9 @@ fn main() {
         draw_logical_circuit_wrapped(&circuit, 12);
     }
 
-    let max_cnot_cost = 20;
+    //what is the best combo of max_cnot_cost, max_expansions, and max_steps?
+    //defaultw as 20 for max_cnot_cost, 100_000 for max_expansions, and 20 for max_steps
+    let max_cnot_cost = 100;
     let max_expansions = 100_000;
 
     // let solutions = find_solutions(&circuit, &hw, max_cnot_cost, max_expansions);
@@ -723,7 +827,8 @@ fn main() {
         return;
     }
 
-    let logical_state = simulate_logical(&circuit);
+    //uncomment for the first eq
+    // let logical_state = simulate_logical(&circuit);
 
 
     let to_show = if show_all {
@@ -733,8 +838,13 @@ fn main() {
     };
 
     for (idx, sol) in solutions.iter().take(to_show).enumerate() {
-        let compiled_state = simulate_physical(circuit.num_qubits, &sol.emitted);
-        let eq = states_close(&logical_state, &compiled_state, 1e-9);
+        //uncomment for the first eq
+        // let compiled_state = simulate_physical(circuit.num_qubits, &sol.emitted);
+        //this only checks if the two circuits are equal on basis state of |0>, not a real
+                            //equivelnence cehck
+        // let eq = states_close(&logical_state, &compiled_state, 1e-9);
+        //this is a more rigoruous but costly check
+        let eq = circuits_equivalent_on_all_basis_states(&circuit, &sol.emitted, 1e-9);
 
         println!("\n=== solution #{idx} ===");
         println!("cnot_cost = {}", sol.cnot_cost);
