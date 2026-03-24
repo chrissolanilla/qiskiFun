@@ -49,7 +49,7 @@ fn star_hardware(n: usize, center: usize) -> Hardware {
     Hardware { num_qubits: n, edges }
 }
 
-fn custom_five_qubit_hardware() -> Hardware {
+fn custom_5_qubit_hardware() -> Hardware {
     Hardware {
         num_qubits: 5,
         edges: vec![
@@ -57,6 +57,34 @@ fn custom_five_qubit_hardware() -> Hardware {
             (0, 2),
             (0, 3),
             (2, 4),
+        ],
+    }
+}
+
+fn custom_10_qubit_hardware() -> Hardware {
+    Hardware {
+        num_qubits: 10,
+        // edges: vec![
+        //     (9, 1),
+        //     (9, 2),
+        //     (9, 3),
+        //     (9, 4),
+        //     (9, 5),
+        //     (9, 6),
+        //     (9, 7),
+        //     (9, 8),
+        //     (9, 0),
+        // ],
+        edges: vec![
+            (9, 1),
+            (9, 2),
+            (9, 3),
+            (9, 4),
+            (2, 5),
+            (2, 6),
+            (2, 7),
+            (6, 8),
+            (6, 0),
         ],
     }
 }
@@ -287,17 +315,19 @@ fn next_states(state: &SearchState, circuit: &Circuit, hw: &Hardware) -> Vec<Sea
                     out.push(next);
                 }
 
-                //try hardware swaps if not execuatble
-                for &(a, b) in &hw.edges {
-                    let new_mapping = apply_swap_to_mapping(&state.mapping, a, b);
+                else {
+                    //try hardware swaps if not execuatble
+                    for &(a, b) in &hw.edges {
+                        let new_mapping = apply_swap_to_mapping(&state.mapping, a, b);
 
-                    let mut next = state.clone();
-                    next.mapping = new_mapping;
-                    next.emitted.push(PhysicalGate::SWAP(a, b));
-                    next.swap_count += 1;
-                    //standard swap decomposition cost in CX basis
-                    next.cnot_cost += 3;
-                    out.push(next);
+                        let mut next = state.clone();
+                        next.mapping = new_mapping;
+                        next.emitted.push(PhysicalGate::SWAP(a, b));
+                        next.swap_count += 1;
+                        //standard swap decomposition cost in CX basis
+                        next.cnot_cost += 3;
+                        out.push(next);
+                    }
                 }
             }
         }
@@ -358,6 +388,7 @@ fn find_solutions(
             continue;
         }
 
+        // if state.gate_index == circuit.gates.len() && mapping_is_identity(&state.mapping) {
         if state.gate_index == circuit.gates.len() && mapping_is_identity(&state.mapping) {
             solutions.push(Solution {
                 emitted: state.emitted.clone(),
@@ -777,7 +808,8 @@ fn main() {
     let hw = match hardware_name.as_str() {
         "line" => line_hardware(circuit.num_qubits),
         "star" => star_hardware(circuit.num_qubits, 0),
-        "custom5" => custom_five_qubit_hardware(),
+        "custom5" => custom_5_qubit_hardware(),
+        "custom10" => custom_10_qubit_hardware(),
         _ => {
             eprintln!("unknown hardware: {}", hardware_name);
             eprintln!("available hardware: line, star, custom5");
@@ -807,12 +839,14 @@ fn main() {
 
     //what is the best combo of max_cnot_cost, max_expansions, and max_steps?
     //defaultw as 20 for max_cnot_cost, 100_000 for max_expansions, and 20 for max_steps
-    let max_cnot_cost = 100;
-    let max_expansions = 100_000;
+    // let max_cnot_cost = 100;
+    // let max_expansions = 100_000;
+    let max_cnot_cost = 300;
+    let max_expansions = 1_000_000;
+    let max_steps = 200;
 
     // let solutions = find_solutions(&circuit, &hw, max_cnot_cost, max_expansions);
     let prune_by_best_cost = !show_all_valid;
-    let max_steps = 1_000_000;
     let solutions = find_solutions(
         &circuit,
         &hw,
