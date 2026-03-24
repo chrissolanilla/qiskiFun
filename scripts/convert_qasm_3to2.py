@@ -7,8 +7,8 @@ from qiskit.qasm2 import dumps
 BENCHMARKS = [
     "Bernstein-Vazirani",
     "Deutsch-Jozsa",
-    "Quantum Fourier Transform",
-    "Shor's Order Finding",
+    # "Quantum Fourier Transform",
+    # "Shor's Order Finding",
 ]
 
 def convert_family(family: str):
@@ -32,7 +32,7 @@ def convert_family(family: str):
         out_path = os.path.join(out_dir, os.path.basename(path))
         with open(out_path, "w") as f:
             f.write(out_text)
-        print(f"converted {path} -> {out_path}")
+        print(f"converted {path} to {out_path}")
 
 def main():
     for family in BENCHMARKS:

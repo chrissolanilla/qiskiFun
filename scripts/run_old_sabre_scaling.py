@@ -15,18 +15,15 @@ import re
 from qiskit import QuantumCircuit, transpile
 from qiskit.transpiler import CouplingMap
 
-
 BENCHMARKS = [
     "Bernstein-Vazirani",
     "Deutsch-Jozsa",
-    "Quantum Fourier Transform",
-    "Shor's Order Finding",
+    # "Quantum Fourier Transform",
+    # "Shor's Order Finding",
 ]
-
 
 def family_slug(name: str) -> str:
     return name.lower().replace(" ", "_")
-
 
 def line_coupling_map(n: int) -> CouplingMap:
     edges = []
@@ -35,10 +32,8 @@ def line_coupling_map(n: int) -> CouplingMap:
         edges.append([i + 1, i])
     return CouplingMap(edges)
 
-
 def count_ops_by_name(circ: QuantumCircuit, gate_name: str) -> int:
     return sum(1 for inst, qargs, cargs in circ.data if inst.name == gate_name)
-
 
 def parse_qubits_from_name(path: str) -> int:
     name = os.path.basename(path)
@@ -47,13 +42,10 @@ def parse_qubits_from_name(path: str) -> int:
         raise ValueError(f"could not parse qubit count from filename: {name}")
     return int(m.group(1))
 
-
 def run_family(family: str):
     os.makedirs("data/results", exist_ok=True)
-
     slug = family_slug(family)
     out_csv = f"data/results/old_sabre_{slug}.csv"
-
     qasm_paths = sorted(
         glob.glob(f"benchmark_circuits_qasm2_oldsafe/{family}/qasm/*.qasm")
     )
@@ -63,18 +55,14 @@ def run_family(family: str):
         return
 
     rows = []
-
     for path in qasm_paths:
         name = os.path.basename(path)
         qc = QuantumCircuit.from_qasm_file(path)
-
         n = qc.num_qubits
         coupling = line_coupling_map(n)
-
         print(f"[{family}] running {name} with {n} qubits...")
 
         orig_cx = count_ops_by_name(qc, "cx")
-
         t0 = time.perf_counter()
         compiled = transpile(
             qc,
@@ -86,9 +74,7 @@ def run_family(family: str):
             seed_transpiler=0,
         )
         runtime = time.perf_counter() - t0
-
         comp_cx = count_ops_by_name(compiled, "cx")
-
         row = {
             "family": family,
             "file": name,
@@ -110,11 +96,9 @@ def run_family(family: str):
 
     print(f"saved {out_csv}")
 
-
 def main():
     for family in BENCHMARKS:
         run_family(family)
-
 
 if __name__ == "__main__":
     main()
