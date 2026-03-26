@@ -1,3 +1,5 @@
+#This script is just to genearte the original images for the circuits used in the presentation
+# of a compiled circuit before and after
 import os
 import matplotlib.pyplot as plt
 
@@ -26,7 +28,6 @@ def main():
         seed=transpile_seed,
     )
 
-    # save original by itself
     fig1 = plt.figure(figsize=(16, 6))
     ax1 = fig1.add_subplot(111)
     qc.draw("mpl", ax=ax1)
@@ -36,7 +37,6 @@ def main():
     fig1.savefig("data/images/original.svg", bbox_inches="tight")
     plt.close(fig1)
 
-    # save compiled by itself
     fig2 = plt.figure(figsize=(20, 8))
     ax2 = fig2.add_subplot(111)
     compiled.draw("mpl", ax=ax2)
@@ -46,7 +46,6 @@ def main():
     fig2.savefig("data/images/compiled.svg", bbox_inches="tight")
     plt.close(fig2)
 
-    # save side-by-side comparison
     fig3, axs = plt.subplots(2, 1, figsize=(20, 12))
     qc.draw("mpl", ax=axs[0])
     axs[0].set_title("original circuit")
@@ -60,12 +59,12 @@ def main():
     plt.close(fig3)
 
     print("saved:")
-    print("  data/images/original.png")
-    print("  data/images/original.svg")
-    print("  data/images/compiled.png")
-    print("  data/images/compiled.svg")
-    print("  data/images/compare_vertical.png")
-    print("  data/images/compare_vertical.svg")
+    print("data/images/original.png")
+    print("data/images/original.svg")
+    print("data/images/compiled.png")
+    print("data/images/compiled.svg")
+    print("data/images/compare_vertical.png")
+    print("data/images/compare_vertical.svg")
 
 
 if __name__ == "__main__":

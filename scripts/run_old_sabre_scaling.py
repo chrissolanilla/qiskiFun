@@ -1,6 +1,7 @@
+#THIS IS THE ONLY FILE THAT NEEDS TO BE RUN IN AN OLDER VERSION OF PYTHON!!!
 import numpy as np
 
-#ts pmo, numpy dep warnings
+#you will get lots of deprecation warnings here
 if not hasattr(np, "int"):
     np.int = int
 if not hasattr(np, "product"):
@@ -15,6 +16,7 @@ import re
 from qiskit import QuantumCircuit, transpile
 from qiskit.transpiler import CouplingMap
 
+#for my benchmarks, the only ones that didnt error out for me where these two.
 BENCHMARKS = [
     "Bernstein-Vazirani",
     "Deutsch-Jozsa",

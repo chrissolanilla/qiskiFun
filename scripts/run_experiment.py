@@ -1,3 +1,5 @@
+#THIS file is just used to generate the csv file for generating images of what a compiled circuit looks like
+# before and after
 import os
 import csv
 from sabre.targets import line_topology
